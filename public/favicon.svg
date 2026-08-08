@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#06080D"/>
-  <circle cx="32" cy="33" r="25" fill="#3D7FFF"/>
-  <circle cx="32" cy="33" r="25" fill="none" stroke="#173B7A" stroke-width="2"/>
-  <circle cx="32" cy="33" r="17" fill="#173B7A"/>
-  <path d="M 17 25 A 20 20 0 0 1 29 12" stroke="#BFDBFF" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.55"/>
-  <text x="32" y="41" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="21" fill="#FFFFFF" text-anchor="middle">XA</text>
-</svg>
