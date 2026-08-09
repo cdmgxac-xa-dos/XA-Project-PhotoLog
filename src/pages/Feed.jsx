@@ -144,7 +144,7 @@ export default function Feed({ project }) {
             ))}
           </div>
           <p className="text-[11px] text-text-tertiary mb-2">
-            Live only — messages aren't saved and disappear once everyone leaves.
+            Keeps the last 50 messages per category — older ones drop off automatically.
           </p>
           <CategoryChat project={project} category={chatCategory} />
         </>

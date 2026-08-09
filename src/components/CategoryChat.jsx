@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient.js";
 import { useAuth } from "../lib/useAuth.js";
 import { listProjectParticipants } from "../lib/projectPhotoLog.js";
+import { listChatMessages, sendChatMessage } from "../lib/chatMessages.js";
 import { notifyMention } from "../lib/notifications.js";
 import Button from "./Button.jsx";
 
@@ -25,63 +26,99 @@ function renderWithMentions(text, mentions) {
   );
 }
 
-// Ephemeral, category-scoped live chat -- deliberately NOT persisted
-// anywhere (no table, no history). Uses Supabase Realtime Broadcast:
-// messages are relayed only to whoever's currently connected to this
-// project+category channel, then gone. @mentions additionally fire a
-// push notification (via the send-mention-notification Edge Function)
-// so the mentioned person hears about it even with the app closed.
+// Category-scoped chat with bounded history: the last 50 messages per
+// project+category, server-enforced (see migration
+// 10_photolog_chat_persistence.sql) so it can't grow unbounded. New
+// messages arrive via Realtime postgres_changes (an INSERT into
+// photolog_chat_messages), not a manual broadcast -- that way the
+// sender sees their own message the same way everyone else does, no
+// separate optimistic-append path to keep in sync. @mentions
+// additionally fire a push notification so the mentioned person hears
+// about it even with the app closed.
 export default function CategoryChat({ project, category }) {
   const { appUser } = useAuth();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [connected, setConnected] = useState(false);
-  const [participants, setParticipants] = useState([]); // {id, name}
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [sendError, setSendError] = useState("");
+  const [participants, setParticipants] = useState([]); // {id, name, role}
   const [mentionQuery, setMentionQuery] = useState(null); // string | null -- non-null while typing "@..."
   const [draftMentions, setDraftMentions] = useState([]); // [{id, name}] inserted into the current draft
   const channelRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
+  const participantsRef = useRef([]);
 
   const selfName = appUser?.employee?.full_name || appUser?.employee_code || "—";
+  const selfRole = appUser?.roles?.role_name || "";
 
   useEffect(() => {
-    listProjectParticipants(project.id).then(setParticipants).catch(() => {});
+    participantsRef.current = participants;
+  }, [participants]);
+
+  useEffect(() => {
+    listProjectParticipants(project.id)
+      .then((rows) => setParticipants((prev) => mergeParticipants(prev, rows)))
+      .catch(() => {});
   }, [project.id]);
 
   useEffect(() => {
+    let cancelled = false;
     setMessages([]);
     setConnected(false);
     setDraftMentions([]);
+    setSendError("");
+    setLoadingHistory(true);
+
+    listChatMessages(project.id, category)
+      .then((rows) => { if (!cancelled) setMessages(rows); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingHistory(false); });
+
     const channel = supabase.channel(channelName(project.id, category), {
       config: { presence: { key: appUser?.id } },
     });
 
     channel
-      .on("broadcast", { event: "message" }, ({ payload }) => {
-        setMessages((prev) => [...prev.slice(-199), payload]);
-      })
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "photolog_chat_messages", filter: `project_id=eq.${project.id}` },
+        ({ new: row }) => {
+          if (row.category !== category) return;
+          const known = participantsRef.current.find((p) => p.id === row.user_id);
+          const isSelf = row.user_id === appUser?.id;
+          setMessages((prev) => [
+            ...prev.slice(-49),
+            {
+              id: row.id,
+              text: row.message_text,
+              name: isSelf ? selfName : known?.name || "Teammate",
+              role: isSelf ? selfRole : known?.role || "",
+              at: row.created_at,
+              mentions: row.mentions || [],
+            },
+          ]);
+        }
+      )
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         const present = Object.values(state)
           .flat()
-          .map((p) => ({ id: p.user_id, name: p.name }))
+          .map((p) => ({ id: p.user_id, name: p.name, role: p.role }))
           .filter((p) => p.id);
-        setParticipants((prev) => {
-          const merged = new Map(prev.map((p) => [p.id, p.name]));
-          present.forEach((p) => merged.set(p.id, p.name));
-          return [...merged.entries()].map(([id, name]) => ({ id, name }));
-        });
+        setParticipants((prev) => mergeParticipants(prev, present));
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           setConnected(true);
-          await channel.track({ user_id: appUser?.id, name: selfName });
+          await channel.track({ user_id: appUser?.id, name: selfName, role: selfRole });
         }
       });
 
     channelRef.current = channel;
     return () => {
+      cancelled = true;
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
@@ -119,40 +156,39 @@ export default function CategoryChat({ project, category }) {
     inputRef.current?.focus();
   }
 
-  function send() {
+  async function send() {
     const trimmed = text.trim();
-    if (!trimmed || !channelRef.current) return;
+    if (!trimmed || !appUser?.id) return;
+    setSendError("");
 
     const mentionsInText = draftMentions.filter((m) => trimmed.includes(`@${m.name}`));
-    const payload = {
-      text: trimmed,
-      name: selfName,
-      role: appUser?.roles?.role_name || "",
-      at: new Date().toISOString(),
-      mentions: mentionsInText,
-    };
-    channelRef.current.send({ type: "broadcast", event: "message", payload });
-    setMessages((prev) => [...prev.slice(-199), payload]);
-
-    mentionsInText.forEach((m) => {
-      notifyMention({ projectId: project.id, category, recipientUserId: m.id, messageText: trimmed });
-    });
-
+    const draftText = trimmed;
     setText("");
     setDraftMentions([]);
     setMentionQuery(null);
+
+    try {
+      await sendChatMessage({ projectId: project.id, category, userId: appUser.id, text: draftText, mentions: mentionsInText });
+      mentionsInText.forEach((m) => {
+        notifyMention({ projectId: project.id, category, recipientUserId: m.id, messageText: draftText });
+      });
+    } catch (err) {
+      setSendError(err.message || "Message failed to send.");
+      setText(draftText); // give it back so nothing's lost
+    }
   }
 
   return (
     <div className="flex flex-col" style={{ height: "55vh" }}>
       <div ref={listRef} className="flex-1 overflow-y-auto space-y-2.5 pb-3">
-        {messages.length === 0 && (
+        {loadingHistory && <p className="text-xs text-text-tertiary text-center py-8">Loading...</p>}
+        {!loadingHistory && messages.length === 0 && (
           <p className="text-xs text-text-tertiary text-center py-8">
-            {connected ? "No messages yet — say something. Nothing here is saved." : "Connecting..."}
+            {connected ? "No messages yet — say something." : "Connecting..."}
           </p>
         )}
         {messages.map((m, i) => (
-          <div key={i} className="bg-panel border border-hair-soft rounded-control px-3 py-2">
+          <div key={m.id ?? i} className="bg-panel border border-hair-soft rounded-control px-3 py-2">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-xs font-semibold text-text-primary">{m.name}</span>
               <span className="text-[10px] text-text-tertiary shrink-0">
@@ -179,6 +215,7 @@ export default function CategoryChat({ project, category }) {
             ))}
           </div>
         )}
+        {sendError && <p className="text-xs text-status-red mb-1.5">{sendError}</p>}
         <div className="flex gap-2">
           <input
             ref={inputRef}
@@ -193,4 +230,10 @@ export default function CategoryChat({ project, category }) {
       </div>
     </div>
   );
+}
+
+function mergeParticipants(prev, additions) {
+  const merged = new Map(prev.map((p) => [p.id, p]));
+  additions.forEach((p) => merged.set(p.id, { ...merged.get(p.id), ...p }));
+  return [...merged.values()];
 }
