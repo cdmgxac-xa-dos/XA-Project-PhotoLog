@@ -59,6 +59,8 @@ export default function Dashboard({ project }) {
   }
 
   const todayCount = photos.filter((p) => isToday(p.created_at)).length;
+  const safetyCount = photos.filter((p) => (p.photo_category || []).includes("Safety Concern")).length;
+  const punchlistCount = photos.filter((p) => (p.photo_category || []).includes("Punchlist")).length;
   const byScope = countBy(photos, "scope_of_work");
   const byFloor = photos.reduce((acc, r) => {
     const key = r.floor_level || "—";
@@ -68,6 +70,17 @@ export default function Dashboard({ project }) {
   const byFloorSorted = Object.entries(byFloor).sort((a, b) => b[1] - a[1]);
   const byCategory = countBy(photos, "photo_category");
   const recent = photos.slice(0, 8);
+
+  const userActivity = Object.values(
+    photos.reduce((acc, p) => {
+      const key = p.user_id;
+      const name = p.submitted_by?.employee?.full_name || p.submitted_by?.employee_code || "—";
+      const role = p.submitted_by?.roles?.role_name || "—";
+      if (!acc[key]) acc[key] = { name, role, count: 0 };
+      acc[key].count += 1;
+      return acc;
+    }, {})
+  ).sort((a, b) => b.count - a.count);
 
   return (
     <AppShell project={project} title="Photo Log Dashboard" onBack={() => navigate("/")}>
@@ -82,6 +95,12 @@ export default function Dashboard({ project }) {
             </Card>
             <Card title="Photos Today">
               <p className="font-display font-bold text-2xl text-brand-blue">{todayCount}</p>
+            </Card>
+            <Card title="Safety Concerns">
+              <p className="font-display font-bold text-2xl text-status-red">{safetyCount}</p>
+            </Card>
+            <Card title="Punchlist Items">
+              <p className="font-display font-bold text-2xl text-status-amber">{punchlistCount}</p>
             </Card>
           </div>
 
@@ -140,6 +159,24 @@ export default function Dashboard({ project }) {
                     {thumbUrls[p.thumbnail_path] && (
                       <img src={thumbUrls[p.thumbnail_path]} alt={p.photo_id} className="w-full h-full object-cover" />
                     )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card title="User Activity">
+            {userActivity.length === 0 ? (
+              <p className="text-sm text-text-tertiary text-center py-2">No photos yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {userActivity.map((u) => (
+                  <div key={u.name + u.role} className="flex items-center justify-between text-sm">
+                    <div className="min-w-0 pr-2">
+                      <span className="text-text-primary truncate">{u.name}</span>
+                      <span className="text-text-tertiary"> · {u.role}</span>
+                    </div>
+                    <Badge tone="neutral">{u.count}</Badge>
                   </div>
                 ))}
               </div>

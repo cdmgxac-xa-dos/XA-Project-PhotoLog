@@ -5,10 +5,14 @@ import { useCurrentProject } from "./lib/useCurrentProject.js";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import ProjectPicker from "./pages/ProjectPicker.jsx";
+import Home from "./pages/Home.jsx";
+import Feed from "./pages/Feed.jsx";
+import PhotoDetail from "./pages/PhotoDetail.jsx";
 import Camera from "./pages/Camera.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Browser from "./pages/Browser.jsx";
 import Report from "./pages/Report.jsx";
+import Profile from "./pages/Profile.jsx";
 
 function FullScreenMessage({ children }) {
   return (
@@ -35,6 +39,8 @@ export default function App() {
   );
 }
 
+// v1.1: "/" is now Home (today's summary + Open Camera / View Feed),
+// not an auto-launched camera -- see Home.jsx and BottomNav.jsx for why.
 function ProjectGate() {
   const { projects, project, loading, error, selectProject, clearProject } = useCurrentProject();
 
@@ -49,10 +55,14 @@ function ProjectGate() {
 
   return (
     <Routes>
-      <Route path="/" element={<Camera project={project} projects={projects} onSwitchProject={clearProject} />} />
+      <Route path="/" element={<Home project={project} projects={projects} onSwitchProject={clearProject} />} />
+      <Route path="/feed" element={<Feed project={project} />} />
+      <Route path="/photo/:id" element={<PhotoDetail project={project} />} />
+      <Route path="/camera" element={<Camera project={project} />} />
       <Route path="/dashboard" element={<Dashboard project={project} />} />
       <Route path="/browse" element={<Browser project={project} />} />
       <Route path="/report" element={<Report project={project} />} />
+      <Route path="/profile" element={<Profile project={project} projects={projects} onSwitchProject={clearProject} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

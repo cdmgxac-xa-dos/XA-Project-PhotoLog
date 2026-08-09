@@ -1,23 +1,18 @@
 import React, { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import AppShell from "../components/AppShell.jsx";
 import Card from "../components/Card.jsx";
 import Button from "../components/Button.jsx";
 import Input from "../components/Input.jsx";
-import { useAuth } from "../lib/useAuth.js";
 import {
   SCOPE_OF_WORK_OPTIONS,
   PHOTO_CATEGORY_OPTIONS,
   submitPhotoUpdate,
 } from "../lib/projectPhotoLog.js";
 
-// The home route ("/") -- app opens straight here after login + project
-// resolve. Open -> capture -> minimum info -> submit -> confirmation ->
-// back to camera, per the original build spec's core workflow.
-export default function Camera({ project, projects, onSwitchProject }) {
-  const navigate = useNavigate();
-  const { appUser } = useAuth();
-  const roleCode = appUser?.roles?.role_code;
+// v1.1: reached via the Camera tab (no longer the "/" landing route --
+// see Home.jsx). Capture flow itself is unchanged from v1.0: open ->
+// capture -> minimum info -> submit -> confirmation -> back to camera.
+export default function Camera({ project }) {
   const fileInputRef = useRef(null);
 
   const [step, setStep] = useState("idle"); // idle | review | submitting | success
@@ -85,19 +80,8 @@ export default function Camera({ project, projects, onSwitchProject }) {
     }
   }
 
-  const headerRight = (
-    <>
-      {roleCode === "field_pic" && (
-        <button onClick={() => navigate("/dashboard")} className="text-xs text-brand-blue">Dashboard</button>
-      )}
-      {projects.length > 1 && (
-        <button onClick={onSwitchProject} className="text-xs text-text-tertiary">Switch</button>
-      )}
-    </>
-  );
-
   return (
-    <AppShell project={project} title="Photo Log" right={headerRight}>
+    <AppShell project={project} title="Photo Log">
       <input
         ref={fileInputRef}
         type="file"

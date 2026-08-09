@@ -4,6 +4,7 @@ import AppShell from "../components/AppShell.jsx";
 import Button from "../components/Button.jsx";
 import { useAuth } from "../lib/useAuth.js";
 import { getPhotoThumbUrls } from "../lib/projectPhotoLog.js";
+import { exportPhotosAsCsv, exportPhotosAsZip } from "../lib/reportExport.js";
 
 const COMPANY = {
   name: "XA GLASS INSTALLATION SERVICES",
@@ -12,19 +13,28 @@ const COMPANY = {
   phone: "0927.960.2672 | 0953.239.1609",
 };
 
+function countBy(rows, field) {
+  const counts = {};
+  rows.forEach((r) => (r[field] || []).forEach((v) => { counts[v] = (counts[v] || 0) + 1; }));
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+}
+
 // Custom report generator output. Printed via window.print() on a
 // dedicated print-area (see index.css) -- no PDF library needed, every
-// OS/browser can "Print > Save as PDF" natively.
+// OS/browser can "Print > Save as PDF" natively. v1.1 adds a layout
+// choice (see Browser.jsx) and Excel/ZIP export alongside PDF.
 export default function Report({ project }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { appUser } = useAuth();
 
   const selectedPhotos = location.state?.photos || [];
+  const layout = location.state?.layout || "Detailed";
 
   const [imageUrls, setImageUrls] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [exporting, setExporting] = useState("");
 
   useEffect(() => {
     if (selectedPhotos.length === 0) { setLoading(false); return; }
@@ -36,6 +46,22 @@ export default function Report({ project }) {
   }, []);
 
   const today = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+  const projectLabel = (project?.project_code || "project").replace(/[^a-z0-9-]+/gi, "_");
+
+  async function handleExportCsv() {
+    exportPhotosAsCsv(selectedPhotos, projectLabel);
+  }
+
+  async function handleExportZip() {
+    setExporting("zip");
+    try {
+      await exportPhotosAsZip(selectedPhotos, imageUrls, projectLabel);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExporting("");
+    }
+  }
 
   if (selectedPhotos.length === 0) {
     return (
@@ -54,7 +80,11 @@ export default function Report({ project }) {
 
       {!loading && !error && (
         <>
-          <div className="flex justify-end mb-4 print:hidden">
+          <div className="flex flex-wrap justify-end gap-2 mb-4 print:hidden">
+            <Button variant="secondary" size="sm" onClick={handleExportCsv}>Export Excel</Button>
+            <Button variant="secondary" size="sm" onClick={handleExportZip} disabled={exporting === "zip"}>
+              {exporting === "zip" ? "Zipping..." : "Export Images (ZIP)"}
+            </Button>
             <Button size="sm" onClick={() => window.print()}>Print / Save as PDF</Button>
           </div>
 
@@ -80,33 +110,118 @@ export default function Report({ project }) {
               <div><span className="font-semibold">Photos Included:</span> {selectedPhotos.length}</div>
             </div>
 
-            <div className="space-y-5">
-              {selectedPhotos.map((p) => (
-                <div key={p.id} className="border border-gray-300 rounded p-3 break-inside-avoid">
-                  <div className="flex gap-4">
-                    {imageUrls[p.image_path] && (
-                      <img
-                        src={imageUrls[p.image_path]}
-                        alt={p.photo_id}
-                        className="w-40 h-40 object-cover rounded border border-gray-300 shrink-0"
-                      />
-                    )}
-                    <div className="min-w-0 flex-1 text-xs space-y-1">
-                      <p className="font-semibold text-sm">{p.photo_id}</p>
-                      <p><span className="font-semibold">Location:</span> {p.floor_level || "—"} {p.unit_number ? `· Unit ${p.unit_number}` : ""}</p>
-                      <p><span className="font-semibold">Scope of Work:</span> {(p.scope_of_work || []).join(", ") || "—"}</p>
-                      <p><span className="font-semibold">Photo Category:</span> {(p.photo_category || []).join(", ") || "—"}</p>
-                      {p.remarks && <p><span className="font-semibold">Remarks:</span> {p.remarks}</p>}
-                      <p><span className="font-semibold">Submitted By:</span> {p.submitted_by?.employee?.full_name || p.submitted_by?.employee_code || "—"} ({p.submitted_by?.roles?.role_name || "—"})</p>
-                      <p><span className="font-semibold">Date:</span> {new Date(p.created_at).toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {layout === "Detailed" && <DetailedLayout photos={selectedPhotos} imageUrls={imageUrls} />}
+            {layout === "Photo List" && <ListLayout photos={selectedPhotos} imageUrls={imageUrls} />}
+            {layout === "Photo Grid" && <GridLayout photos={selectedPhotos} imageUrls={imageUrls} />}
+            {layout === "Summary" && <SummaryLayout photos={selectedPhotos} />}
           </div>
         </>
       )}
     </AppShell>
+  );
+}
+
+function DetailedLayout({ photos, imageUrls }) {
+  return (
+    <div className="space-y-5">
+      {photos.map((p) => (
+        <div key={p.id} className="border border-gray-300 rounded p-3 break-inside-avoid">
+          <div className="flex gap-4">
+            {imageUrls[p.image_path] && (
+              <img src={imageUrls[p.image_path]} alt={p.photo_id} className="w-40 h-40 object-cover rounded border border-gray-300 shrink-0" />
+            )}
+            <div className="min-w-0 flex-1 text-xs space-y-1">
+              <p className="font-semibold text-sm">{p.photo_id}</p>
+              <p><span className="font-semibold">Location:</span> {p.floor_level || "—"} {p.unit_number ? `· Unit ${p.unit_number}` : ""}</p>
+              <p><span className="font-semibold">Scope of Work:</span> {(p.scope_of_work || []).join(", ") || "—"}</p>
+              <p><span className="font-semibold">Photo Category:</span> {(p.photo_category || []).join(", ") || "—"}</p>
+              {p.remarks && <p><span className="font-semibold">Remarks:</span> {p.remarks}</p>}
+              <p><span className="font-semibold">Submitted By:</span> {p.submitted_by?.employee?.full_name || p.submitted_by?.employee_code || "—"} ({p.submitted_by?.roles?.role_name || "—"})</p>
+              <p><span className="font-semibold">Date:</span> {new Date(p.created_at).toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ListLayout({ photos, imageUrls }) {
+  return (
+    <table className="w-full text-xs border-collapse">
+      <thead>
+        <tr className="border-b-2 border-gray-800 text-left">
+          <th className="py-1.5 pr-2">Photo</th>
+          <th className="py-1.5 pr-2">Location</th>
+          <th className="py-1.5 pr-2">Scope</th>
+          <th className="py-1.5 pr-2">Category</th>
+          <th className="py-1.5 pr-2">Submitted By</th>
+          <th className="py-1.5">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {photos.map((p) => (
+          <tr key={p.id} className="border-b border-gray-300 break-inside-avoid">
+            <td className="py-1.5 pr-2">
+              {imageUrls[p.image_path] && <img src={imageUrls[p.image_path]} alt={p.photo_id} className="w-12 h-12 object-cover rounded border border-gray-300" />}
+            </td>
+            <td className="py-1.5 pr-2">{p.floor_level || "—"} {p.unit_number ? `· ${p.unit_number}` : ""}</td>
+            <td className="py-1.5 pr-2">{(p.scope_of_work || []).join(", ") || "—"}</td>
+            <td className="py-1.5 pr-2">{(p.photo_category || []).join(", ") || "—"}</td>
+            <td className="py-1.5 pr-2">{p.submitted_by?.employee?.full_name || p.submitted_by?.employee_code || "—"}</td>
+            <td className="py-1.5">{new Date(p.created_at).toLocaleDateString()}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function GridLayout({ photos, imageUrls }) {
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {photos.map((p) => (
+        <div key={p.id} className="border border-gray-300 rounded p-2 break-inside-avoid">
+          {imageUrls[p.image_path] && (
+            <img src={imageUrls[p.image_path]} alt={p.photo_id} className="w-full h-28 object-cover rounded border border-gray-300 mb-1.5" />
+          )}
+          <p className="text-[11px] font-semibold">{p.photo_id}</p>
+          <p className="text-[10px] text-gray-600">{p.floor_level || "—"} {p.unit_number ? `· ${p.unit_number}` : ""}</p>
+          <p className="text-[10px] text-gray-600">{(p.photo_category || []).join(", ") || "—"}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummaryLayout({ photos }) {
+  const byFloor = countBy(photos.map((p) => ({ ...p, floor_level_arr: [p.floor_level || "—"] })), "floor_level_arr");
+  const byScope = countBy(photos, "scope_of_work");
+  const byCategory = countBy(photos, "photo_category");
+
+  return (
+    <div className="space-y-4">
+      <SummaryTable title="By Floor" rows={byFloor} />
+      <SummaryTable title="By Scope of Work" rows={byScope} />
+      <SummaryTable title="By Photo Category" rows={byCategory} />
+    </div>
+  );
+}
+
+function SummaryTable({ title, rows }) {
+  return (
+    <div>
+      <p className="font-semibold text-sm mb-1.5">{title}</p>
+      <table className="w-full text-xs border-collapse">
+        <tbody>
+          {rows.map(([label, count]) => (
+            <tr key={label} className="border-b border-gray-300">
+              <td className="py-1.5">{label}</td>
+              <td className="py-1.5 text-right font-medium">{count}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

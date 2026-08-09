@@ -76,6 +76,7 @@ export async function submitPhotoUpdate(projectId, { floorLevel, unitNumber, sco
 
   const imagePath = storagePathFor(projectId, "photo");
   const thumbnailPath = storagePathFor(projectId, "thumb");
+  const originalPath = storagePathFor(projectId, "original");
 
   const { error: uploadError } = await supabase.storage
     .from("project-photos")
@@ -86,6 +87,14 @@ export async function submitPhotoUpdate(projectId, { floorLevel, unitNumber, sco
     .from("project-photos")
     .upload(thumbnailPath, thumbnail, { contentType: "image/jpeg" });
   if (thumbError) throw thumbError;
+
+  // Untouched capture, kept for future AI/documentation use per the
+  // v1.1 spec's Image Handling section -- not shown anywhere in the UI
+  // today, just preserved alongside the two display-sized copies.
+  const { error: originalError } = await supabase.storage
+    .from("project-photos")
+    .upload(originalPath, file, { contentType: file.type || "image/jpeg" });
+  if (originalError) throw originalError;
 
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -101,6 +110,7 @@ export async function submitPhotoUpdate(projectId, { floorLevel, unitNumber, sco
       remarks: remarks || null,
       image_path: imagePath,
       thumbnail_path: thumbnailPath,
+      original_image_path: originalPath,
     })
     .select("id, photo_id")
     .single();
@@ -129,15 +139,22 @@ export async function getPhotoThumbUrls(paths) {
   return map;
 }
 
+const PHOTO_UPDATE_COLUMNS = `
+  id, photo_id, project_id, floor_level, unit_number, scope_of_work, photo_category,
+  remarks, image_path, thumbnail_path, original_image_path, created_at, user_id,
+  submitted_by:user_id ( employee_code, roles ( role_name ), employee:employee_id ( full_name ) )
+`;
+
+// Feed, Home, Dashboard, and the report Browser all read through here.
+// filters: { dateFrom, dateTo, floorLevel, unitNumber, scopeOfWork[],
+// photoCategory[], submittedBy, limit }. Always scoped to visible
+// (feed_visibility) rows -- there's no "show hidden" UI yet.
 export async function listPhotoUpdates(projectId, filters = {}) {
   let query = supabase
     .from("project_photo_updates")
-    .select(`
-      id, photo_id, floor_level, unit_number, scope_of_work, photo_category,
-      remarks, image_path, thumbnail_path, created_at, user_id,
-      submitted_by:user_id ( employee_code, roles ( role_name ), employee:employee_id ( full_name ) )
-    `)
+    .select(PHOTO_UPDATE_COLUMNS)
     .eq("project_id", projectId)
+    .eq("feed_visibility", true)
     .order("created_at", { ascending: false });
 
   if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
@@ -146,9 +163,20 @@ export async function listPhotoUpdates(projectId, filters = {}) {
   if (filters.unitNumber) query = query.ilike("unit_number", `%${filters.unitNumber}%`);
   if (filters.scopeOfWork?.length) query = query.overlaps("scope_of_work", filters.scopeOfWork);
   if (filters.photoCategory?.length) query = query.overlaps("photo_category", filters.photoCategory);
+  if (filters.submittedBy) query = query.eq("user_id", filters.submittedBy);
   if (filters.limit) query = query.limit(filters.limit);
 
   const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function getPhotoById(id) {
+  const { data, error } = await supabase
+    .from("project_photo_updates")
+    .select(PHOTO_UPDATE_COLUMNS)
+    .eq("id", id)
+    .single();
   if (error) throw error;
   return data;
 }

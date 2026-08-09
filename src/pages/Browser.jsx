@@ -45,6 +45,8 @@ export default function Browser({ project }) {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
+  const [submittedBy, setSubmittedBy] = useState("");
+  const [layout, setLayout] = useState("Detailed");
 
   function toggle(list, setList, value) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
@@ -66,6 +68,7 @@ export default function Browser({ project }) {
       setSelected(new Set(rows.map((r) => r.id)));
       setThumbUrls(await getPhotoThumbUrls(rows.map((r) => r.thumbnail_path).filter(Boolean)));
       setSearched(true);
+      setSubmittedBy("");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -81,9 +84,17 @@ export default function Browser({ project }) {
     });
   }
 
+  // "User" filter narrows the already-fetched result set client-side --
+  // there's no separate roster query, so options come from whoever's
+  // actually in these results.
+  const submitters = [...new Map(
+    photos.map((p) => [p.user_id, p.submitted_by?.employee?.full_name || p.submitted_by?.employee_code || "—"])
+  ).entries()];
+  const visiblePhotos = submittedBy ? photos.filter((p) => p.user_id === submittedBy) : photos;
+
   function goToReport() {
-    const chosen = photos.filter((p) => selected.has(p.id));
-    navigate("/report", { state: { photos: chosen } });
+    const chosen = visiblePhotos.filter((p) => selected.has(p.id));
+    navigate("/report", { state: { photos: chosen, layout } });
   }
 
   if (roleCode !== "field_pic") {
@@ -135,18 +146,30 @@ export default function Browser({ project }) {
             <p className="text-sm text-text-tertiary text-center py-10">No photos match these filters.</p>
           ) : (
             <>
+              {submitters.length > 1 && (
+                <div className="mb-3">
+                  <p className="block text-xs font-body font-medium text-text-secondary mb-2">Submitted By</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Chip active={submittedBy === ""} onClick={() => setSubmittedBy("")}>Anyone</Chip>
+                    {submitters.map(([userId, name]) => (
+                      <Chip key={userId} active={submittedBy === userId} onClick={() => setSubmittedBy(userId)}>{name}</Chip>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-text-tertiary">{photos.length} photo{photos.length === 1 ? "" : "s"} found · {selected.size} selected</p>
+                <p className="text-xs text-text-tertiary">{visiblePhotos.length} photo{visiblePhotos.length === 1 ? "" : "s"} found · {selected.size} selected</p>
                 <button
                   className="text-xs text-brand-blue"
-                  onClick={() => setSelected(selected.size === photos.length ? new Set() : new Set(photos.map((p) => p.id)))}
+                  onClick={() => setSelected(selected.size === visiblePhotos.length ? new Set() : new Set(visiblePhotos.map((p) => p.id)))}
                 >
-                  {selected.size === photos.length ? "Clear all" : "Select all"}
+                  {selected.size === visiblePhotos.length ? "Clear all" : "Select all"}
                 </button>
               </div>
 
-              <div className="space-y-2 mb-24">
-                {photos.map((p) => (
+              <div className="space-y-2 mb-4">
+                {visiblePhotos.map((p) => (
                   <button key={p.id} onClick={() => toggleSelected(p.id)} className="w-full text-left">
                     <Card className={selected.has(p.id) ? "border-brand-blue" : ""}>
                       <div className="flex gap-3">
@@ -171,6 +194,24 @@ export default function Browser({ project }) {
                     </Card>
                   </button>
                 ))}
+              </div>
+
+              <div className="mb-24">
+                <p className="block text-xs font-body font-medium text-text-secondary mb-2">Report Layout</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {["Photo List", "Photo Grid", "Summary", "Detailed"].map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() => setLayout(opt)}
+                      className={[
+                        "px-2 py-2.5 rounded-control text-[11px] font-body font-medium border text-center transition-colors",
+                        layout === opt ? "bg-brand-blue text-white border-transparent" : "bg-void text-text-secondary border-hair",
+                      ].join(" ")}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="fixed bottom-0 left-0 right-0 p-4 bg-void/95 backdrop-blur border-t border-hair-soft">

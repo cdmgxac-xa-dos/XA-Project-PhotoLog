@@ -1,11 +1,18 @@
 import React from "react";
 import { useAuth } from "../lib/useAuth.js";
+import BottomNav from "./BottomNav.jsx";
 
 // XA Project PhotoLog — lightweight shell (no sidebar, no module list).
 // Same background treatment as xadOS-app's FieldLayout: project photo at
 // 12% opacity + a separate 35% black scrim on top.
-export default function AppShell({ project, title, onBack, right, children }) {
-  const { appUser, signOut } = useAuth();
+//
+// v1.1: hosts the persistent bottom tab bar (Home/Feed/Camera/
+// Dashboard/Profile). Sign out and the employee/role badge moved to the
+// Profile tab, so this header stays just title + optional back + an
+// optional page-specific action (e.g. Feed's Filter button).
+export default function AppShell({ project, title, onBack, right, children, hideNav = false }) {
+  const { appUser } = useAuth();
+  const roleCode = appUser?.roles?.role_code;
   const accent = project?.accent_color || "#5C9BFF";
 
   return (
@@ -43,17 +50,10 @@ export default function AppShell({ project, title, onBack, right, children }) {
               {project && <div className="text-xs text-text-tertiary truncate">{project.project_code}</div>}
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {right}
-            <button onClick={signOut} className="text-xs text-text-tertiary">Sign out</button>
-          </div>
+          {right && <div className="flex items-center gap-3 shrink-0">{right}</div>}
         </header>
-        <main className="p-4 pb-10">{children}</main>
-        {appUser && (
-          <div className="fixed bottom-3 left-3 text-[10px] text-text-tertiary bg-panel/80 backdrop-blur px-2 py-1 rounded-control">
-            {appUser.employee_code} · {appUser.roles?.role_name}
-          </div>
-        )}
+        <main className={hideNav ? "p-4 pb-10" : "p-4 pb-24"}>{children}</main>
+        {!hideNav && <BottomNav roleCode={roleCode} />}
       </div>
     </div>
   );
