@@ -3,7 +3,6 @@ import { supabase } from "../lib/supabaseClient.js";
 import { useAuth } from "../lib/useAuth.js";
 import { listProjectParticipants } from "../lib/projectPhotoLog.js";
 import { listChatMessages, sendChatMessage } from "../lib/chatMessages.js";
-import { notifyMention } from "../lib/notifications.js";
 import Button from "./Button.jsx";
 
 function channelName(projectId, category) {
@@ -32,9 +31,12 @@ function renderWithMentions(text, mentions) {
 // messages arrive via Realtime postgres_changes (an INSERT into
 // photolog_chat_messages), not a manual broadcast -- that way the
 // sender sees their own message the same way everyone else does, no
-// separate optimistic-append path to keep in sync. @mentions
-// additionally fire a push notification so the mentioned person hears
-// about it even with the app closed.
+// separate optimistic-append path to keep in sync. Every message pushes
+// a notification to the rest of the team (see migration
+// 11_chat_notification_trigger.sql), with the title/body adjusted for
+// anyone actually @mentioned -- that trigger reads the mentions we
+// insert alongside the message, so there's no separate client-side call
+// needed here for that.
 export default function CategoryChat({ project, category }) {
   const { appUser } = useAuth();
   const [messages, setMessages] = useState([]);
@@ -168,10 +170,9 @@ export default function CategoryChat({ project, category }) {
     setMentionQuery(null);
 
     try {
+      // Notifying the team (mention-aware) happens server-side via the
+      // insert trigger -- see migration 11_chat_notification_trigger.sql.
       await sendChatMessage({ projectId: project.id, category, userId: appUser.id, text: draftText, mentions: mentionsInText });
-      mentionsInText.forEach((m) => {
-        notifyMention({ projectId: project.id, category, recipientUserId: m.id, messageText: draftText });
-      });
     } catch (err) {
       setSendError(err.message || "Message failed to send.");
       setText(draftText); // give it back so nothing's lost

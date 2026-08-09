@@ -53,18 +53,3 @@ export async function disableNotifications() {
   await subscription.unsubscribe();
   await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
 }
-
-// @mention push -- fire-and-forget, called from CategoryChat.jsx when a
-// message names someone. Chat itself is never persisted; this is a
-// direct client -> Edge Function call, not a database trigger, since
-// there's no row for a trigger to fire on. Swallow failures so a failed
-// notification never blocks sending the actual chat message.
-export async function notifyMention({ projectId, category, recipientUserId, messageText }) {
-  try {
-    await supabase.functions.invoke("send-mention-notification", {
-      body: { projectId, category, recipientUserId, messageText },
-    });
-  } catch (err) {
-    console.error("Mention notification failed:", err);
-  }
-}
