@@ -215,7 +215,7 @@ export default function Browser({ project }) {
                 </div>
               </div>
 
-              <div className="fixed bottom-0 left-0 right-0 p-4 bg-void/95 backdrop-blur border-t border-hair-soft">
+              <div className="fixed bottom-20 left-0 right-0 z-10 p-4 bg-void/95 backdrop-blur border-t border-hair-soft">
                 <Button className="w-full" size="lg" onClick={goToReport} disabled={selected.size === 0}>
                   Generate Report ({selected.size} selected)
                 </Button>
