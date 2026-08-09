@@ -176,7 +176,7 @@ export default function Feed({ project }) {
                     <div className="flex gap-3">
                       <div className="w-16 h-16 rounded-control overflow-hidden bg-void border border-hair-soft shrink-0">
                         {thumbUrls[p.thumbnail_path] && (
-                          <img src={thumbUrls[p.thumbnail_path]} alt={p.photo_id} className="w-full h-full object-cover" />
+                          <img src={thumbUrls[p.thumbnail_path]} alt={p.photo_id} loading="lazy" className="w-full h-full object-cover" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">

@@ -157,7 +157,7 @@ export default function Dashboard({ project }) {
                 {recent.map((p) => (
                   <div key={p.id} className="aspect-square rounded-control overflow-hidden bg-void border border-hair-soft">
                     {thumbUrls[p.thumbnail_path] && (
-                      <img src={thumbUrls[p.thumbnail_path]} alt={p.photo_id} className="w-full h-full object-cover" />
+                      <img src={thumbUrls[p.thumbnail_path]} alt={p.photo_id} loading="lazy" className="w-full h-full object-cover" />
                     )}
                   </div>
                 ))}

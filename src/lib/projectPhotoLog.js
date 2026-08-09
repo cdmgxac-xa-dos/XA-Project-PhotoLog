@@ -18,33 +18,11 @@ export const PHOTO_CATEGORY_OPTIONS = [
   "Others",
 ];
 
-function resizeImage(file, maxDimension, quality) {
+function loadImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > height && width > maxDimension) {
-        height = Math.round((height * maxDimension) / width);
-        width = maxDimension;
-      } else if (height > maxDimension) {
-        width = Math.round((width * maxDimension) / height);
-        height = maxDimension;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => {
-          URL.revokeObjectURL(objectUrl);
-          if (!blob) { reject(new Error("Image compression failed.")); return; }
-          resolve(blob);
-        },
-        "image/jpeg",
-        quality
-      );
-    };
+    img.onload = () => resolve({ img, objectUrl });
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
       reject(new Error("Could not read the captured photo."));
@@ -53,12 +31,62 @@ function resizeImage(file, maxDimension, quality) {
   });
 }
 
+function drawToCanvas(img, maxDimension) {
+  let { width, height } = img;
+  if (width > height && width > maxDimension) {
+    height = Math.round((height * maxDimension) / width);
+    width = maxDimension;
+  } else if (height > maxDimension) {
+    width = Math.round((width * maxDimension) / height);
+    height = maxDimension;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+  return canvas;
+}
+
+function canvasToBlob(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Image compression failed."))),
+      "image/jpeg",
+      quality
+    );
+  });
+}
+
+// Steps quality down (and dimension, if needed) until the encoded blob
+// fits under targetBytes -- "compress on the worker's phone before
+// uploading" per the locked storage-budget decision, rather than a fixed
+// quality that can wildly over- or under-shoot depending on the photo.
+async function compressToTarget(file, { maxDimension, targetBytes, startQuality, minQuality }) {
+  const { img, objectUrl } = await loadImage(file);
+  try {
+    const canvas = drawToCanvas(img, maxDimension);
+    let quality = startQuality;
+    let blob = await canvasToBlob(canvas, quality);
+    while (blob.size > targetBytes && quality > minQuality) {
+      quality = Math.max(minQuality, quality - 0.12);
+      blob = await canvasToBlob(canvas, quality);
+    }
+    return blob;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+// Locked targets (see PhotoLog v1.1 storage-budget decision): main image
+// ~400-600KB, thumbnail ~50KB. No separate uncompressed original is
+// uploaded -- keeps a 200-photo/day project to a few GB/month instead of
+// tens of GB.
 async function compressImage(file) {
-  return resizeImage(file, 1600, 0.75);
+  return compressToTarget(file, { maxDimension: 1280, targetBytes: 600 * 1024, startQuality: 0.75, minQuality: 0.4 });
 }
 
 async function compressThumbnail(file) {
-  return resizeImage(file, 400, 0.7);
+  return compressToTarget(file, { maxDimension: 320, targetBytes: 50 * 1024, startQuality: 0.6, minQuality: 0.3 });
 }
 
 function storagePathFor(projectId, suffix) {
@@ -76,7 +104,6 @@ export async function submitPhotoUpdate(projectId, { floorLevel, unitNumber, sco
 
   const imagePath = storagePathFor(projectId, "photo");
   const thumbnailPath = storagePathFor(projectId, "thumb");
-  const originalPath = storagePathFor(projectId, "original");
 
   const { error: uploadError } = await supabase.storage
     .from("project-photos")
@@ -88,14 +115,11 @@ export async function submitPhotoUpdate(projectId, { floorLevel, unitNumber, sco
     .upload(thumbnailPath, thumbnail, { contentType: "image/jpeg" });
   if (thumbError) throw thumbError;
 
-  // Untouched capture, kept for future AI/documentation use per the
-  // v1.1 spec's Image Handling section -- not shown anywhere in the UI
-  // today, just preserved alongside the two display-sized copies.
-  const { error: originalError } = await supabase.storage
-    .from("project-photos")
-    .upload(originalPath, file, { contentType: file.type || "image/jpeg" });
-  if (originalError) throw originalError;
-
+  // No uncompressed original is uploaded -- reversed from the v1.1 spec's
+  // Image Handling section per the locked storage-budget decision (a
+  // 3-8MB original per photo would multiply monthly storage several
+  // times over at real project volume). original_image_path stays null;
+  // the column remains for a possible future opt-in high-quality upload.
   const { data: { user } } = await supabase.auth.getUser();
 
   const { data, error } = await supabase
@@ -110,7 +134,6 @@ export async function submitPhotoUpdate(projectId, { floorLevel, unitNumber, sco
       remarks: remarks || null,
       image_path: imagePath,
       thumbnail_path: thumbnailPath,
-      original_image_path: originalPath,
     })
     .select("id, photo_id")
     .single();
@@ -118,23 +141,53 @@ export async function submitPhotoUpdate(projectId, { floorLevel, unitNumber, sco
   return data;
 }
 
+// Signed URLs are cached in memory (path -> url) for their lifetime, so
+// revisiting the same photo within a session reuses the identical URL
+// string instead of minting a new signed token -- which in turn lets the
+// browser's own HTTP cache (and the service worker's runtime cache, see
+// public/sw.js) actually serve repeat thumbnail views from disk instead
+// of re-downloading. 24h is long enough to cover a full shift/day.
+const SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
+const signedUrlCache = new Map();
+
+function cachedSignedUrl(path) {
+  const entry = signedUrlCache.get(path);
+  return entry && entry.expiresAt > Date.now() ? entry.url : null;
+}
+
+function rememberSignedUrl(path, url) {
+  signedUrlCache.set(path, { url, expiresAt: Date.now() + (SIGNED_URL_TTL_SECONDS - 300) * 1000 });
+}
+
 export async function getPhotoUrl(path) {
+  const cached = cachedSignedUrl(path);
+  if (cached) return cached;
   const { data, error } = await supabase.storage
     .from("project-photos")
-    .createSignedUrl(path, 3600);
+    .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
   if (error) throw error;
+  rememberSignedUrl(path, data.signedUrl);
   return data.signedUrl;
 }
 
 export async function getPhotoThumbUrls(paths) {
-  if (paths.length === 0) return {};
+  const map = {};
+  const toFetch = [];
+  paths.forEach((p) => {
+    const cached = cachedSignedUrl(p);
+    if (cached) map[p] = cached; else toFetch.push(p);
+  });
+  if (toFetch.length === 0) return map;
+
   const { data, error } = await supabase.storage
     .from("project-photos")
-    .createSignedUrls(paths, 3600);
+    .createSignedUrls(toFetch, SIGNED_URL_TTL_SECONDS);
   if (error) throw error;
-  const map = {};
   data.forEach((entry, i) => {
-    if (entry.signedUrl) map[paths[i]] = entry.signedUrl;
+    if (entry.signedUrl) {
+      map[toFetch[i]] = entry.signedUrl;
+      rememberSignedUrl(toFetch[i], entry.signedUrl);
+    }
   });
   return map;
 }

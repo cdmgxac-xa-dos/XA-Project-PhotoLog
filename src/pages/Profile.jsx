@@ -1,11 +1,45 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import AppShell from "../components/AppShell.jsx";
 import Card from "../components/Card.jsx";
 import Button from "../components/Button.jsx";
 import { useAuth } from "../lib/useAuth.js";
+import { notificationsSupported, getNotificationStatus, enableNotifications, disableNotifications } from "../lib/notifications.js";
+
+const STATUS_LABEL = {
+  unsupported: "Not available on this device/browser",
+  denied: "Blocked — enable notifications for this site in your browser settings",
+  subscribed: "On — you'll be notified when teammates add photos",
+  unsubscribed: "Off",
+};
 
 export default function Profile({ project, projects, onSwitchProject }) {
   const { appUser, signOut } = useAuth();
+  const [notifStatus, setNotifStatus] = useState("unsubscribed");
+  const [notifBusy, setNotifBusy] = useState(false);
+  const [notifError, setNotifError] = useState("");
+
+  useEffect(() => {
+    getNotificationStatus().then(setNotifStatus).catch(() => setNotifStatus("unsupported"));
+  }, []);
+
+  async function toggleNotifications() {
+    setNotifBusy(true);
+    setNotifError("");
+    try {
+      if (notifStatus === "subscribed") {
+        await disableNotifications();
+        setNotifStatus("unsubscribed");
+      } else {
+        await enableNotifications();
+        setNotifStatus("subscribed");
+      }
+    } catch (err) {
+      setNotifError(err.message);
+      setNotifStatus(await getNotificationStatus());
+    } finally {
+      setNotifBusy(false);
+    }
+  }
 
   return (
     <AppShell project={project} title="Profile">
@@ -24,6 +58,21 @@ export default function Profile({ project, projects, onSwitchProject }) {
           {projects.length > 1 && (
             <Button variant="secondary" size="sm" className="mt-3" onClick={onSwitchProject}>
               Switch Project
+            </Button>
+          )}
+        </Card>
+
+        <Card title="Notifications">
+          <p className="text-xs text-text-tertiary mb-3">{STATUS_LABEL[notifStatus]}</p>
+          {notifError && <p className="text-xs text-status-red mb-3">{notifError}</p>}
+          {notificationsSupported() && notifStatus !== "denied" && (
+            <Button
+              variant={notifStatus === "subscribed" ? "secondary" : "primary"}
+              size="sm"
+              onClick={toggleNotifications}
+              disabled={notifBusy}
+            >
+              {notifBusy ? "Please wait..." : notifStatus === "subscribed" ? "Turn Off Notifications" : "Enable Notifications"}
             </Button>
           )}
         </Card>
