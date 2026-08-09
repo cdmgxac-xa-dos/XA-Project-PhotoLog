@@ -6,6 +6,7 @@ import Button from "../components/Button.jsx";
 import Badge from "../components/Badge.jsx";
 import { useAuth } from "../lib/useAuth.js";
 import { listPhotoUpdates, getPhotoThumbUrls } from "../lib/projectPhotoLog.js";
+import { canManage } from "../lib/roles.js";
 
 function countBy(rows, field) {
   const counts = {};
@@ -32,7 +33,7 @@ export default function Dashboard({ project }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (roleCode !== "field_pic") { setLoading(false); return; }
+    if (!canManage(roleCode)) { setLoading(false); return; }
     async function load() {
       setLoading(true);
       setError("");
@@ -50,7 +51,7 @@ export default function Dashboard({ project }) {
     load();
   }, [project.id, roleCode]);
 
-  if (roleCode !== "field_pic") {
+  if (!canManage(roleCode)) {
     return (
       <AppShell project={project} title="Photo Log Dashboard" onBack={() => navigate("/")}>
         <p className="text-sm text-status-red text-center py-10">This dashboard is available to the Project PIC only.</p>

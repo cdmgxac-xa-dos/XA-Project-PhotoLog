@@ -7,6 +7,7 @@ import Button from "../components/Button.jsx";
 import Input from "../components/Input.jsx";
 import CategoryChat from "../components/CategoryChat.jsx";
 import { useAuth } from "../lib/useAuth.js";
+import { canManage } from "../lib/roles.js";
 import { PHOTO_CATEGORY_OPTIONS, SCOPE_OF_WORK_OPTIONS, listPhotoUpdates, getPhotoThumbUrls } from "../lib/projectPhotoLog.js";
 import { DATE_PRESETS, resolvePreset } from "../lib/dateRanges.js";
 
@@ -27,7 +28,7 @@ export default function Feed({ project }) {
   const [searchParams] = useSearchParams();
   const { appUser } = useAuth();
   const roleCode = appUser?.roles?.role_code;
-  const isPic = roleCode === "field_pic";
+  const isPic = canManage(roleCode);
 
   // ?chat=1&category=Safety%20Concern -- lets a mention push notification
   // (see CategoryChat.jsx) open straight into the right conversation

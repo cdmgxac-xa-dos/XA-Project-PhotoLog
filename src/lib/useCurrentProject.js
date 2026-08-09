@@ -1,23 +1,27 @@
 import { useEffect, useState, useCallback } from "react";
-import { listMyFieldProjects } from "./fieldProjects.js";
+import { listMyFieldProjects, listAllProjectsForOwner } from "./fieldProjects.js";
 
 const STORAGE_KEY = "xa-photolog:project-id";
 
 // Project is chosen once per device (remembered in localStorage), never
 // re-asked per photo -- the whole point of this app existing separately
 // from xadOS-app's menu-driven project navigation.
-export function useCurrentProject() {
+//
+// roleCode: "owner" gets every project (not just team-assigned ones) --
+// see listAllProjectsForOwner().
+export function useCurrentProject(roleCode) {
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(() => localStorage.getItem(STORAGE_KEY) || "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    listMyFieldProjects()
+    const fetcher = roleCode === "owner" ? listAllProjectsForOwner : listMyFieldProjects;
+    fetcher()
       .then((rows) => setProjects(rows))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [roleCode]);
 
   const selectProject = useCallback((id) => {
     localStorage.setItem(STORAGE_KEY, id);

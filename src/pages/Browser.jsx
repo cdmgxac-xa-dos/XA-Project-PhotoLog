@@ -5,6 +5,7 @@ import Card from "../components/Card.jsx";
 import Button from "../components/Button.jsx";
 import Input from "../components/Input.jsx";
 import { useAuth } from "../lib/useAuth.js";
+import { canManage } from "../lib/roles.js";
 import {
   SCOPE_OF_WORK_OPTIONS,
   PHOTO_CATEGORY_OPTIONS,
@@ -97,7 +98,7 @@ export default function Browser({ project }) {
     navigate("/report", { state: { photos: chosen, layout } });
   }
 
-  if (roleCode !== "field_pic") {
+  if (!canManage(roleCode)) {
     return (
       <AppShell project={project} title="Search Photos" onBack={() => navigate("/dashboard")}>
         <p className="text-sm text-status-red text-center py-10">Search &amp; reporting is available to the Project PIC only.</p>
