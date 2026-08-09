@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AppShell from "../components/AppShell.jsx";
 import Card from "../components/Card.jsx";
 import Badge from "../components/Badge.jsx";
@@ -24,13 +24,20 @@ const CATEGORY_TONE = {
 // floor/unit) is PIC-only per the spec's permission table.
 export default function Feed({ project }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { appUser } = useAuth();
   const roleCode = appUser?.roles?.role_code;
   const isPic = roleCode === "field_pic";
 
-  const [mode, setMode] = useState("photos"); // "photos" | "chat"
+  // ?chat=1&category=Safety%20Concern -- lets a mention push notification
+  // (see CategoryChat.jsx) open straight into the right conversation
+  // instead of just landing on the Feed's default Photos view.
+  const deepLinkCategory = searchParams.get("category");
+  const [mode, setMode] = useState(searchParams.get("chat") === "1" ? "chat" : "photos");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [chatCategory, setChatCategory] = useState(PHOTO_CATEGORY_OPTIONS[0]);
+  const [chatCategory, setChatCategory] = useState(
+    deepLinkCategory && PHOTO_CATEGORY_OPTIONS.includes(deepLinkCategory) ? deepLinkCategory : PHOTO_CATEGORY_OPTIONS[0]
+  );
   const [showFilters, setShowFilters] = useState(false);
   const [preset, setPreset] = useState("Today");
   const [customFrom, setCustomFrom] = useState("");

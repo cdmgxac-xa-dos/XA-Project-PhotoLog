@@ -233,3 +233,25 @@ export async function getPhotoById(id) {
   if (error) throw error;
   return data;
 }
+
+// @mention candidate list. No project-roster table is confirmed
+// readable by field-crew accounts, so this derives names from actual
+// photo activity instead (same approach as Browser.jsx's "Submitted By"
+// filter) -- CategoryChat.jsx merges this with whoever's currently
+// present in the chat, so people who haven't posted yet are still
+// mentionable once they've opened the chat at least once this session.
+export async function listProjectParticipants(projectId) {
+  const { data, error } = await supabase
+    .from("project_photo_updates")
+    .select("user_id, submitted_by:user_id ( employee_code, employee:employee_id ( full_name ) )")
+    .eq("project_id", projectId)
+    .limit(300);
+  if (error) throw error;
+  const seen = new Map();
+  data.forEach((row) => {
+    if (!seen.has(row.user_id)) {
+      seen.set(row.user_id, row.submitted_by?.employee?.full_name || row.submitted_by?.employee_code || "—");
+    }
+  });
+  return [...seen.entries()].map(([id, name]) => ({ id, name }));
+}
