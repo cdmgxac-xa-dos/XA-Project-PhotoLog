@@ -5,6 +5,7 @@ import Card from "../components/Card.jsx";
 import Badge from "../components/Badge.jsx";
 import Button from "../components/Button.jsx";
 import Input from "../components/Input.jsx";
+import CategoryChat from "../components/CategoryChat.jsx";
 import { useAuth } from "../lib/useAuth.js";
 import { PHOTO_CATEGORY_OPTIONS, SCOPE_OF_WORK_OPTIONS, listPhotoUpdates, getPhotoThumbUrls } from "../lib/projectPhotoLog.js";
 import { DATE_PRESETS, resolvePreset } from "../lib/dateRanges.js";
@@ -27,7 +28,9 @@ export default function Feed({ project }) {
   const roleCode = appUser?.roles?.role_code;
   const isPic = roleCode === "field_pic";
 
+  const [mode, setMode] = useState("photos"); // "photos" | "chat"
   const [activeCategory, setActiveCategory] = useState("All");
+  const [chatCategory, setChatCategory] = useState(PHOTO_CATEGORY_OPTIONS[0]);
   const [showFilters, setShowFilters] = useState(false);
   const [preset, setPreset] = useState("Today");
   const [customFrom, setCustomFrom] = useState("");
@@ -43,6 +46,7 @@ export default function Feed({ project }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (mode !== "photos") return;
     setLoading(true);
     setError("");
     const filters = {
@@ -57,7 +61,7 @@ export default function Feed({ project }) {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [project.id, activeCategory, appliedAdvanced, isPic]);
+  }, [project.id, mode, activeCategory, appliedAdvanced, isPic]);
 
   function toggleScope(value) {
     setScopeOfWork((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
@@ -84,7 +88,7 @@ export default function Feed({ project }) {
     setShowFilters(false);
   }
 
-  const headerRight = isPic && (
+  const headerRight = mode === "photos" && isPic && (
     <button onClick={() => setShowFilters((v) => !v)} className="text-xs text-brand-blue">
       {appliedAdvanced ? "Filter •" : "Filter"}
     </button>
@@ -92,6 +96,54 @@ export default function Feed({ project }) {
 
   return (
     <AppShell project={project} title="Photo Feed" right={headerRight}>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <button
+          onClick={() => setMode("photos")}
+          className={[
+            "py-2 rounded-control text-sm font-body font-semibold border transition-colors",
+            mode === "photos" ? "bg-brand-blue text-white border-transparent" : "bg-void text-text-secondary border-hair",
+          ].join(" ")}
+        >
+          📷 Photos
+        </button>
+        <button
+          onClick={() => setMode("chat")}
+          className={[
+            "py-2 rounded-control text-sm font-body font-semibold border transition-colors",
+            mode === "chat" ? "bg-brand-blue text-white border-transparent" : "bg-void text-text-secondary border-hair",
+          ].join(" ")}
+        >
+          💬 Chat
+        </button>
+      </div>
+
+      {mode === "chat" && (
+        <>
+          <div className="flex gap-2 overflow-x-auto pb-3 -mx-1 px-1">
+            {PHOTO_CATEGORY_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setChatCategory(opt)}
+                className={[
+                  "shrink-0 px-3 py-1.5 rounded-full text-xs font-body font-medium border transition-colors",
+                  chatCategory === opt
+                    ? "bg-brand-blue text-white border-transparent"
+                    : "bg-void text-text-secondary border-hair",
+                ].join(" ")}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-text-tertiary mb-2">
+            Live only — messages aren't saved and disappear once everyone leaves.
+          </p>
+          <CategoryChat project={project} category={chatCategory} />
+        </>
+      )}
+
+      {mode === "photos" && (
+      <>
       <div className="flex gap-2 overflow-x-auto pb-3 -mx-1 px-1">
         {["All", ...PHOTO_CATEGORY_OPTIONS].map((opt) => (
           <button
@@ -202,6 +254,8 @@ export default function Feed({ project }) {
             </div>
           )}
         </>
+      )}
+      </>
       )}
     </AppShell>
   );
