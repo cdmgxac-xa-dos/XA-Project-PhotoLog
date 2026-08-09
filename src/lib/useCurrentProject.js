@@ -7,21 +7,21 @@ const STORAGE_KEY = "xa-photolog:project-id";
 // re-asked per photo -- the whole point of this app existing separately
 // from xadOS-app's menu-driven project navigation.
 //
-// roleCode: "owner" gets every project (not just team-assigned ones) --
-// see listAllProjectsForOwner().
-export function useCurrentProject(roleCode) {
+// isPhotologAdmin (from useAuth()) gets every project, not just
+// team-assigned ones -- see listAllProjectsForOwner().
+export function useCurrentProject(isPhotologAdmin) {
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(() => localStorage.getItem(STORAGE_KEY) || "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const fetcher = roleCode === "owner" ? listAllProjectsForOwner : listMyFieldProjects;
+    const fetcher = isPhotologAdmin ? listAllProjectsForOwner : listMyFieldProjects;
     fetcher()
       .then((rows) => setProjects(rows))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [roleCode]);
+  }, [isPhotologAdmin]);
 
   const selectProject = useCallback((id) => {
     localStorage.setItem(STORAGE_KEY, id);

@@ -26,7 +26,7 @@ function FullScreenMessage({ children }) {
 // No route wraps Login/ChangePassword -- once auth state flips, this
 // component just re-renders past them, no navigate() calls needed.
 export default function App() {
-  const { session, appUser, loading } = useAuth();
+  const { session, appUser, isPhotologAdmin, loading } = useAuth();
 
   if (loading) return <FullScreenMessage>Loading...</FullScreenMessage>;
   if (!session) return <Login />;
@@ -34,15 +34,15 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <ProjectGate roleCode={appUser?.roles?.role_code} />
+      <ProjectGate isPhotologAdmin={isPhotologAdmin} />
     </BrowserRouter>
   );
 }
 
 // v1.1: "/" is now Home (today's summary + Open Camera / View Feed),
 // not an auto-launched camera -- see Home.jsx and BottomNav.jsx for why.
-function ProjectGate({ roleCode }) {
-  const { projects, project, loading, error, selectProject, clearProject } = useCurrentProject(roleCode);
+function ProjectGate({ isPhotologAdmin }) {
+  const { projects, project, loading, error, selectProject, clearProject } = useCurrentProject(isPhotologAdmin);
 
   if (loading) return <FullScreenMessage>Loading your projects...</FullScreenMessage>;
   if (error) return <FullScreenMessage>{error}</FullScreenMessage>;

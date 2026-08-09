@@ -24,7 +24,7 @@ function isToday(iso) {
 
 export default function Dashboard({ project }) {
   const navigate = useNavigate();
-  const { appUser } = useAuth();
+  const { appUser, isPhotologAdmin } = useAuth();
   const roleCode = appUser?.roles?.role_code;
 
   const [photos, setPhotos] = useState([]);
@@ -33,7 +33,7 @@ export default function Dashboard({ project }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!canManage(roleCode)) { setLoading(false); return; }
+    if (!canManage(roleCode, isPhotologAdmin)) { setLoading(false); return; }
     async function load() {
       setLoading(true);
       setError("");
@@ -49,9 +49,9 @@ export default function Dashboard({ project }) {
       }
     }
     load();
-  }, [project.id, roleCode]);
+  }, [project.id, roleCode, isPhotologAdmin]);
 
-  if (!canManage(roleCode)) {
+  if (!canManage(roleCode, isPhotologAdmin)) {
     return (
       <AppShell project={project} title="Photo Log Dashboard" onBack={() => navigate("/")}>
         <p className="text-sm text-status-red text-center py-10">This dashboard is available to the Project PIC only.</p>

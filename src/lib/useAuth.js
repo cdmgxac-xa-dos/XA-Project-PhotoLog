@@ -7,32 +7,44 @@ import { supabase } from "./supabaseClient.js";
 export function useAuth() {
   const [session, setSession] = useState(null);
   const [appUser, setAppUser] = useState(null);
+  // Owner-level PhotoLog access (all projects, Dashboard/Reports
+  // anywhere) -- true for role_code='owner' OR anyone on the
+  // photolog_admins allowlist (see migration 09_photolog_admins.sql).
+  // Deliberately NOT the same thing as appUser.roles.role_code, so
+  // granting someone this doesn't change their role anywhere else in
+  // XA DOS.
+  const [isPhotologAdmin, setIsPhotologAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const loadAppUser = useCallback(async (userId) => {
     if (!userId) {
       setAppUser(null);
+      setIsPhotologAdmin(false);
       return;
     }
-    const { data, error } = await supabase
-      .from("app_users")
-      .select("id, employee_code, login_email, department_id, status, must_change_password, roles(role_code, role_name, access_level), employee:employee_id ( full_name )")
-      .eq("id", userId)
-      .single();
+    const [userResult, adminResult] = await Promise.all([
+      supabase
+        .from("app_users")
+        .select("id, employee_code, login_email, department_id, status, must_change_password, roles(role_code, role_name, access_level), employee:employee_id ( full_name )")
+        .eq("id", userId)
+        .single(),
+      supabase.rpc("is_photolog_admin"),
+    ]);
 
-    if (error) {
-      console.error("Failed to load app_users record:", error.message);
+    if (userResult.error) {
+      console.error("Failed to load app_users record:", userResult.error.message);
       setAppUser(null);
+      setIsPhotologAdmin(false);
       return;
     }
-    setAppUser(data);
+    setAppUser(userResult.data);
+    setIsPhotologAdmin(adminResult.data === true);
   }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      loadAppUser(data.session?.user?.id);
-      setLoading(false);
+      loadAppUser(data.session?.user?.id).finally(() => setLoading(false));
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
@@ -56,5 +68,5 @@ export function useAuth() {
     setAppUser((prev) => (prev ? { ...prev, must_change_password: false } : prev));
   };
 
-  return { session, appUser, loading, signIn, signOut, changePassword };
+  return { session, appUser, isPhotologAdmin, loading, signIn, signOut, changePassword };
 }

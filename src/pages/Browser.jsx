@@ -30,7 +30,7 @@ function Chip({ active, onClick, children }) {
 
 export default function Browser({ project }) {
   const navigate = useNavigate();
-  const { appUser } = useAuth();
+  const { appUser, isPhotologAdmin } = useAuth();
   const roleCode = appUser?.roles?.role_code;
 
   const [dateFrom, setDateFrom] = useState("");
@@ -98,7 +98,7 @@ export default function Browser({ project }) {
     navigate("/report", { state: { photos: chosen, layout } });
   }
 
-  if (!canManage(roleCode)) {
+  if (!canManage(roleCode, isPhotologAdmin)) {
     return (
       <AppShell project={project} title="Search Photos" onBack={() => navigate("/dashboard")}>
         <p className="text-sm text-status-red text-center py-10">Search &amp; reporting is available to the Project PIC only.</p>

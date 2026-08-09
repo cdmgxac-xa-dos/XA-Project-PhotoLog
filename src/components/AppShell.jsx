@@ -11,7 +11,7 @@ import BottomNav from "./BottomNav.jsx";
 // Profile tab, so this header stays just title + optional back + an
 // optional page-specific action (e.g. Feed's Filter button).
 export default function AppShell({ project, title, onBack, right, children, hideNav = false }) {
-  const { appUser } = useAuth();
+  const { appUser, isPhotologAdmin } = useAuth();
   const roleCode = appUser?.roles?.role_code;
   const accent = project?.accent_color || "#5C9BFF";
 
@@ -53,7 +53,7 @@ export default function AppShell({ project, title, onBack, right, children, hide
           {right && <div className="flex items-center gap-3 shrink-0">{right}</div>}
         </header>
         <main className={hideNav ? "p-4 pb-10" : "p-4 pb-24"}>{children}</main>
-        {!hideNav && <BottomNav roleCode={roleCode} />}
+        {!hideNav && <BottomNav roleCode={roleCode} isPhotologAdmin={isPhotologAdmin} />}
       </div>
     </div>
   );

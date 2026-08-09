@@ -13,8 +13,8 @@ const TABS = [
 // Persistent tab bar, v1.1's "New Application Sections" -- Home / Feed /
 // Camera / Dashboard(PIC) / Profile. Camera is a reachable tab now
 // rather than the app's auto-launched landing screen (see Home.jsx).
-export default function BottomNav({ roleCode }) {
-  const tabs = TABS.filter((t) => !t.picOnly || canManage(roleCode));
+export default function BottomNav({ roleCode, isPhotologAdmin }) {
+  const tabs = TABS.filter((t) => !t.picOnly || canManage(roleCode, isPhotologAdmin));
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-20 bg-panel/95 backdrop-blur border-t border-hair-soft flex items-stretch">

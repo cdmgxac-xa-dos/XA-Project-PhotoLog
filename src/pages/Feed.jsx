@@ -26,9 +26,9 @@ const CATEGORY_TONE = {
 export default function Feed({ project }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { appUser } = useAuth();
+  const { appUser, isPhotologAdmin } = useAuth();
   const roleCode = appUser?.roles?.role_code;
-  const isPic = canManage(roleCode);
+  const isPic = canManage(roleCode, isPhotologAdmin);
 
   // ?chat=1&category=Safety%20Concern -- lets a mention push notification
   // (see CategoryChat.jsx) open straight into the right conversation
